@@ -8,6 +8,25 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use App\Traits\HasPagination;
+use Tymon\JWTAuth\Exceptions\TokenExpiredException;
+use Tymon\JWTAuth\Exceptions\TokenInvalidException;
+
+class UsahaController extends Controller
+{
+    use HasPagination;
+
+    public function index(Request $request)
+    {
+        $usahas = Usaha::where('owner_id', auth()->id())
+                       ->withCount('tenants')
+                       ->paginate($this->getPerPage($request));
+
+        return response()->json(
+            $this->paginateResponse($usahas, 'Daftar usaha')
+        );
+    }
+}
 
 class AuthController extends Controller
 {
@@ -43,24 +62,31 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        $user = User::where('username', $request->username)->first();
+        $user  = User::where('username', $request->username)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json(['message' => 'Username atau password salah'], 401);
-        }
-
-        $token = JWTAuth::fromUser($user);
-
-        return response()->json([
-            'message' => 'Login berhasil',
-            'token'   => $token,
-            'user'    => [
-                'id'       => $user->id,
-                'username' => $user->username,
-                'role'     => $user->role->name,
-            ],
-        ]);
+    if (!$user || !Hash::check($request->password, $user->password)) {
+        return response()->json(['message' => 'Username atau password salah'], 401);
     }
+
+    // ✅ Cek apakah akun aktif
+    if (!$user->is_active) {
+        return response()->json(['message' => 'Akun Anda telah dinonaktifkan. Hubungi admin.'], 403);
+    }
+
+    $token = JWTAuth::fromUser($user);
+
+    return response()->json([
+        'message'      => 'Login berhasil',
+        'access_token' => $token,
+        'token_type'   => 'bearer',
+        'expires_in'   => config('jwt.ttl') * 60, // detik, contoh: 3600 = 1 jam
+        'user'         => [
+            'id'       => $user->id,
+            'username' => $user->username,
+            'role'     => $user->role->name,
+        ],
+    ]);
+}
 
     // Logout
     public function logout()
@@ -81,4 +107,36 @@ class AuthController extends Controller
             'role'     => $user->role->name,
         ]);
     }
+
+    /**
+ * Refresh access token
+ *
+ * Client kirim token LAMA (yang sudah expired) → dapat token BARU
+ * Token lama otomatis di-blacklist
+ *
+ * Cara hit: POST /api/auth/refresh
+ * Header: Authorization: Bearer {token_lama_yang_expired}
+ */
+public function refresh()
+{
+    try {
+        $newToken = JWTAuth::parseToken()->refresh();
+
+        return response()->json([
+            'message'      => 'Token berhasil direfresh',
+            'access_token' => $newToken,
+            'token_type'   => 'bearer',
+            'expires_in'   => config('jwt.ttl') * 60, // dalam detik
+        ]);
+    } catch (TokenExpiredException $e) {
+        // Refresh token juga sudah expired (lewat 7 hari)
+        return response()->json([
+            'message' => 'Refresh token sudah expired. Silakan login ulang.',
+        ], 401);
+    } catch (TokenInvalidException $e) {
+        return response()->json([
+            'message' => 'Token tidak valid.',
+        ], 401);
+    }
+}
 }

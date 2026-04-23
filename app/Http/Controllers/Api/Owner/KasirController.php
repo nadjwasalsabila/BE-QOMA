@@ -10,6 +10,23 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use App\Traits\HasPagination;
+
+class UsahaController extends Controller
+{
+    use HasPagination;
+
+    public function index(Request $request)
+    {
+        $usahas = Usaha::where('owner_id', auth()->id())
+                       ->withCount('tenants')
+                       ->paginate($this->getPerPage($request));
+
+        return response()->json(
+            $this->paginateResponse($usahas, 'Daftar usaha')
+        );
+    }
+}
 
 class KasirController extends Controller
 {

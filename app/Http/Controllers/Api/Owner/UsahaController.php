@@ -6,6 +6,23 @@ use App\Http\Controllers\Controller;
 use App\Models\Usaha;
 use App\Services\UsahaService;
 use Illuminate\Http\Request;
+use App\Traits\HasPagination;
+
+class UsahaController extends Controller
+{
+    use HasPagination;
+
+    public function index(Request $request)
+    {
+        $usahas = Usaha::where('owner_id', auth()->id())
+                       ->withCount('tenants')
+                       ->paginate($this->getPerPage($request));
+
+        return response()->json(
+            $this->paginateResponse($usahas, 'Daftar usaha')
+        );
+    }
+}
 
 class UsahaController extends Controller
 {
@@ -39,32 +56,32 @@ class UsahaController extends Controller
     }
 
     // GET /owner/usaha/{id} — detail 1 usaha
-    public function show(string $id)
+    public function show(Usaha $usaha)
     {
-        $usaha = $this->findOwned($id);
+        $this->authorize('view', $usaha);
 
-        return response()->json([
-            'message' => 'Detail usaha',
-            'data'    => $usaha->load('tenants'),
-        ]);
-    }
+    return response()->json($usaha);
+}
 
     // PUT /owner/usaha/{id} — update usaha
-    public function update(Request $request, string $id)
-    {
-        $request->validate([
-            'nama_usaha' => 'sometimes|string|max:100',
-            'email'      => 'nullable|email',
-        ]);
+   public function update(Request $request, string $id)
+{
+    $request->validate([
+        'nama_usaha' => 'sometimes|string|max:100',
+        'email'      => 'nullable|email',
+    ]);
 
-        $usaha = $this->findOwned($id);
-        $usaha = $this->usahaService->update($usaha, $request->all());
+    $usaha = Usaha::findOrFail($id);
 
-        return response()->json([
-            'message' => 'Usaha berhasil diupdate',
-            'data'    => $usaha,
-        ]);
-    }
+    $this->authorize('update', $usaha);
+
+    $usaha = $this->usahaService->update($usaha, $request->all());
+
+    return response()->json([
+        'message' => 'Usaha berhasil diupdate',
+        'data'    => $usaha,
+    ]);
+}
 
     // DELETE /owner/usaha/{id} — hapus usaha
     public function destroy(string $id)

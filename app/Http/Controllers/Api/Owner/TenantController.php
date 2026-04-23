@@ -7,6 +7,23 @@ use App\Models\Tenant;
 use App\Models\Usaha;
 use App\Services\TenantService;
 use Illuminate\Http\Request;
+use App\Traits\HasPagination;
+
+class UsahaController extends Controller
+{
+    use HasPagination;
+
+    public function index(Request $request)
+    {
+        $usahas = Usaha::where('owner_id', auth()->id())
+                       ->withCount('tenants')
+                       ->paginate($this->getPerPage($request));
+
+        return response()->json(
+            $this->paginateResponse($usahas, 'Daftar usaha')
+        );
+    }
+}
 
 class TenantController extends Controller
 {

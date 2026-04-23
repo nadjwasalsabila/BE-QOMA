@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Tymon\JWTAuth\Exceptions\JWTException;
+use Tymon\JWTAuth\Exceptions\TokenExpiredException;
 
 class RoleMiddleware
 {
@@ -13,20 +14,16 @@ class RoleMiddleware
     {
         try {
             $user = JWTAuth::parseToken()->authenticate();
-        } catch (JWTException $e) {
-            return response()->json(['message' => 'Token tidak valid atau sudah expired'], 401);
-        }
-
-        if (!$user) {
-            return response()->json(['message' => 'Unauthorized'], 401);
-        }
-
-        $userRole = $user->role->name ?? null;
-
-        if (!in_array($userRole, $roles)) {
+        } catch (TokenExpiredException $e) {
             return response()->json([
-                'message' => 'Akses ditolak. Role kamu: ' . $userRole . '. Role yang diizinkan: ' . implode(', ', $roles),
-            ], 403);
+                'message' => 'Token sudah expired. Gunakan endpoint /api/auth/refresh untuk mendapatkan token baru.',
+                'code'    => 'TOKEN_EXPIRED',
+            ], 401);
+        } catch (JWTException $e) {
+            return response()->json([
+                'message' => 'Token tidak valid.',
+                'code'    => 'TOKEN_INVALID',
+            ], 401);
         }
 
         return $next($request);
