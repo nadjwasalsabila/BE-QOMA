@@ -7,9 +7,13 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use App\Services\MenuService;
 
 class TenantService
 {
+
+    public function __construct(private MenuService $menuService) {}
+
     /**
      * Buat cabang baru + auto generate akun kasir
      *
@@ -46,7 +50,10 @@ class TenantService
             'username'  => $username,
             'password'  => Hash::make($plainPassword),
             'email'     => $data['email_kasir'] ?? null,
+            
         ]);
+    
+    $this->menuService->syncMenuTenantUntukCabangBaru($tenant->id, $usahaId);
 
         return [
             'tenant' => $tenant->load('usaha'),
@@ -100,4 +107,5 @@ class TenantService
         User::where('tenant_id', $tenant->id)->delete();
         $tenant->delete();
     }
+    
 }

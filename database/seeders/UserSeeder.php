@@ -38,10 +38,21 @@ class UserSeeder extends Seeder
             'nama_usaha' => 'Warung Barokah',
             'owner_id'   => $owner->id,
             'email'      => 'warungbarokah@demo.com',
+            'status' => true,
+            'approved_at' => now(),
         ]);
 
         // Update owner agar punya usaha_id
         $owner->update(['usaha_id' => $usaha->id]);
+
+        // Usaha pending untuk testing approval system
+        $usahaPending = Usaha::updateOrCreate(['nama_usaha' => 'Kedai Baru Pending'], [
+            'id'         => Str::uuid(),
+            'nama_usaha' => 'Kedai Baru Pending',
+            'owner_id'   => null,
+            'email'      => 'kedaibaru@demo.com',
+            'status'     => 'pending',
+        ]);
 
         // 4. Buat 2 Cabang
         $cabang1 = Tenant::updateOrCreate(['nama_cabang' => 'Cabang Semarang Barat'], [

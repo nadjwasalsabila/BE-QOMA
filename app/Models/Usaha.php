@@ -12,6 +12,12 @@ class Usaha extends Model
 
     protected $fillable = [
         'id', 'nama_usaha', 'owner_id', 'email',
+         'status', 'catatan_admin', 'approved_at', 'rejected_at',
+    ];
+
+    protected $casts = [
+        'approved_at' => 'datetime',
+        'rejected_at' => 'datetime',
     ];
 
     // 1 usaha punya banyak cabang (tenant)
@@ -24,5 +30,10 @@ class Usaha extends Model
     public function owner()
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function rejections()
+    {
+        return $this->hasMany(UsahaRejection::class, 'usaha_id');
     }
 }
