@@ -7,15 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 class KategoriMenu extends Model
 {
     protected $table = 'kategori_menu';
-    protected $keyType = 'string';
     public $incrementing = false;
+    protected $keyType = 'string';
+    public $timestamps = false;
 
-    protected $fillable = ['id', 'usaha_id', 'nama'];
-
-    public function usaha()
-    {
-        return $this->belongsTo(Usaha::class, 'usaha_id');
-    }
+    protected $fillable = ['id', 'nama'];
 
     public function menus()
     {

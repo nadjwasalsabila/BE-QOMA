@@ -6,31 +6,33 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
-public function up(): void
-{
-    Schema::create('users', function (Blueprint $table) {
-        $table->string('id')->primary();
-        $table->string('role_id')->nullable();
-        $table->string('tenant_id')->nullable();
-        $table->string('usaha_id')->nullable();
-        $table->string('username')->unique();
-        $table->string('password');
-        $table->string('email')->nullable();
-        $table->timestamps();
+    public function up(): void
+    {
+        Schema::create('users', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->string('role_id');
+            $table->string('usaha_id')->nullable();
+            $table->string('outlet_id')->nullable();
+            $table->string('username')->unique();
+            $table->string('email')->unique();
+            $table->string('password');
+            $table->timestamps();
 
-        $table->foreign('role_id')->references('id')->on('roles');
-    });
-}
-    /**
-     * Reverse the migrations.
-     */
+            $table->foreign('role_id')->references('id')->on('roles');
+            $table->foreign('usaha_id')->references('id')->on('usaha')->nullOnDelete();
+        });
+
+        // Tambah FK owner_id ke usaha setelah users dibuat
+        Schema::table('usaha', function (Blueprint $table) {
+            $table->foreign('owner_id')->references('id')->on('users')->nullOnDelete();
+        });
+    }
+
     public function down(): void
     {
+        Schema::table('usaha', function (Blueprint $table) {
+            $table->dropForeign(['owner_id']);
+        });
         Schema::dropIfExists('users');
-        Schema::dropIfExists('password_reset_tokens');
-        Schema::dropIfExists('sessions');
     }
 };

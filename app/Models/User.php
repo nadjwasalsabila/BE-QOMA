@@ -3,34 +3,25 @@
 namespace App\Models;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Tymon\JWTAuth\Contracts\JWTSubject;
+use Illuminate\Support\Str;
 
-class User extends Authenticatable implements JWTSubject
+class User extends Authenticatable
 {
     protected $table = 'users';
-    protected $keyType = 'string';
     public $incrementing = false;
+    protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'role_id', 'tenant_id', 'usaha_id',
-        'username', 'nama_lengkap', 'password', 'email', 'is_active',
-    ];
-
-    protected $casts = [
-        'is_active' => 'boolean',
+        'id', 'role_id', 'usaha_id', 'outlet_id',
+        'username', 'email', 'password',
     ];
 
     protected $hidden = ['password'];
 
-    // Wajib untuk JWT
-    public function getJWTIdentifier()
+    protected static function boot()
     {
-        return $this->getKey();
-    }
-
-    public function getJWTCustomClaims()
-    {
-        return [];
+        parent::boot();
+        static::creating(fn($m) => $m->id = $m->id ?: Str::uuid());
     }
 
     public function role()
@@ -43,8 +34,33 @@ class User extends Authenticatable implements JWTSubject
         return $this->belongsTo(Usaha::class, 'usaha_id');
     }
 
-    public function tenant()
+    public function outlet()
     {
-        return $this->belongsTo(Tenant::class, 'tenant_id');
+        return $this->belongsTo(Outlet::class, 'outlet_id');
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role_id === 'superadmin';
+    }
+
+    public function isOwner(): bool
+    {
+        return $this->role_id === 'owner';
+    }
+
+    public function isOutlet(): bool
+    {
+        return $this->role_id === 'outlet';
+    }
+
+    public function activityLogs()
+    {
+        return $this->hasMany(ActivityLog::class, 'user_id');
+    }
+
+    public function notifications()
+    {
+        return $this->hasMany(Notification::class, 'user_id');
     }
 }

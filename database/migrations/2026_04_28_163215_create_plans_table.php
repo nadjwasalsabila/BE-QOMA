@@ -8,18 +8,18 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('usaha', function (Blueprint $table) {
+        Schema::create('plans', function (Blueprint $table) {
             $table->string('id')->primary();
-            $table->string('nama_usaha');
-            $table->string('email');
-            $table->string('alamat')->nullable();
-            $table->string('owner_id')->nullable(); // FK ke users, set after
+            $table->string('nama_plan'); // free trial, pro
+            $table->decimal('harga', 15, 2);
+            $table->integer('batas_outlet');
+            $table->string('deskripsi')->nullable();
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('usaha');
+        Schema::dropIfExists('plans');
     }
 };

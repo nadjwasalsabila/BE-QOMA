@@ -3,37 +3,49 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Usaha extends Model
 {
     protected $table = 'usaha';
-    protected $keyType = 'string';
     public $incrementing = false;
+    protected $keyType = 'string';
 
-    protected $fillable = [
-        'id', 'nama_usaha', 'owner_id', 'email',
-         'status', 'catatan_admin', 'approved_at', 'rejected_at',
-    ];
+    protected $fillable = ['id', 'nama_usaha', 'email', 'alamat', 'owner_id'];
 
-    protected $casts = [
-        'approved_at' => 'datetime',
-        'rejected_at' => 'datetime',
-    ];
-
-    // 1 usaha punya banyak cabang (tenant)
-    public function tenants()
+    protected static function boot()
     {
-        return $this->hasMany(Tenant::class, 'usaha_id');
+        parent::boot();
+        static::creating(fn($m) => $m->id = $m->id ?: Str::uuid());
     }
 
-    // 1 usaha dimiliki 1 owner (user)
     public function owner()
     {
         return $this->belongsTo(User::class, 'owner_id');
     }
 
-    public function rejections()
+    public function outlets()
     {
-        return $this->hasMany(UsahaRejection::class, 'usaha_id');
+        return $this->hasMany(Outlet::class, 'usaha_id');
+    }
+
+    public function subscription()
+    {
+        return $this->hasOne(Subscription::class, 'usaha_id')->latestOfMany();
+    }
+
+    public function subscriptions()
+    {
+        return $this->hasMany(Subscription::class, 'usaha_id');
+    }
+
+    public function menus()
+    {
+        return $this->hasMany(Menu::class, 'usaha_id');
+    }
+
+    public function bahanMasters()
+    {
+        return $this->hasMany(BahanMaster::class, 'usaha_id');
     }
 }
