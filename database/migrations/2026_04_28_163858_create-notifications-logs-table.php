@@ -7,32 +7,23 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     public function up(): void
-    {
-        Schema::create('notifications', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('user_id'); // target user (superadmin)
-            $table->string('title');
-            $table->string('message');
-            $table->boolean('is_read')->default(false);
-            $table->timestamps();
+{
+    Schema::create('notifications', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('user_id');
+        $table->string('title');
+        $table->text('message');
+        $table->boolean('is_read')->default(false);
+        $table->string('type')->nullable(); // 'new_owner', 'new_subscription', dll
+        $table->json('data')->nullable();   // payload tambahan
+        $table->timestamps();
 
-            $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
-        });
+        $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+    });
+}
 
-        Schema::create('activity_logs', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('user_id');
-            $table->string('aktivitas');
-            $table->string('deskripsi')->nullable();
-            $table->timestamp('created_at')->useCurrent();
-
-            $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
-        });
-    }
-
-    public function down(): void
-    {
-        Schema::dropIfExists('activity_logs');
-        Schema::dropIfExists('notifications');
-    }
+public function down(): void
+{
+    Schema::dropIfExists('notifications');
+}
 };

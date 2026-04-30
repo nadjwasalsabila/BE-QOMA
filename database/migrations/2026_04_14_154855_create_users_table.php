@@ -6,27 +6,23 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up(): void
-    {
-        Schema::create('users', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('role_id');
-            $table->string('usaha_id')->nullable();
-            $table->string('outlet_id')->nullable();
-            $table->string('username')->unique();
-            $table->string('email')->unique();
-            $table->string('password');
-            $table->timestamps();
+   public function up(): void
+{
+    Schema::create('users', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('role_id')->nullable();
+        $table->string('usaha_id')->nullable();
+        $table->string('outlet_id')->nullable(); // ← bukan tenant_id lagi
+        $table->string('username')->unique();
+        $table->string('nama_lengkap')->nullable();
+        $table->string('email')->nullable();
+        $table->string('password');
+        $table->boolean('is_active')->default(true);
+        $table->timestamps();
 
-            $table->foreign('role_id')->references('id')->on('roles');
-            $table->foreign('usaha_id')->references('id')->on('usaha')->nullOnDelete();
-        });
-
-        // Tambah FK owner_id ke usaha setelah users dibuat
-        Schema::table('usaha', function (Blueprint $table) {
-            $table->foreign('owner_id')->references('id')->on('users')->nullOnDelete();
-        });
-    }
+        $table->foreign('role_id')->references('id')->on('roles');
+    });
+}
 
     public function down(): void
     {

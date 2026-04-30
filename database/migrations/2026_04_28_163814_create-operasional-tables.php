@@ -7,117 +7,173 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     public function up(): void
-    {
-        // Meja per outlet
-        Schema::create('meja', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('outlet_id');
-            $table->string('nomor_meja');
-            $table->string('qr_code')->nullable();
-            $table->timestamps();
+{
+    // bahan_master — dibuat owner, template bahan baku global per usaha
+    Schema::create('bahan_master', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('usaha_id');
+        $table->string('nama');
+        $table->string('satuan')->nullable();
+        $table->decimal('harga_default', 12, 2)->default(0);
+        $table->string('gambar')->nullable();
+        $table->timestamps();
 
-            $table->foreign('outlet_id')->references('id')->on('outlet')->cascadeOnDelete();
-        });
+        $table->foreign('usaha_id')->references('id')->on('usaha')->onDelete('cascade');
+    });
 
-        // Stok bahan baku per outlet
-        Schema::create('bahan_outlet', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('outlet_id');
-            $table->string('bahan_master_id');
-            $table->decimal('stok', 10, 3)->default(0);
-            $table->date('tanggal_masuk')->nullable();
-            $table->date('tanggal_kadaluarsa')->nullable();
-            $table->timestamps();
+    // bahan_outlet — stok aktual per outlet
+    Schema::create('bahan_outlet', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('outlet_id');
+        $table->string('bahan_master_id');
+        $table->decimal('stok', 12, 2)->default(0);
+        $table->date('tanggal_masuk')->nullable();
+        $table->date('tanggal_kadaluarsa')->nullable();
+        $table->timestamps();
 
-            $table->foreign('outlet_id')->references('id')->on('outlet')->cascadeOnDelete();
-            $table->foreign('bahan_master_id')->references('id')->on('bahan_master')->cascadeOnDelete();
-        });
+        $table->foreign('outlet_id')->references('id')->on('outlet')->onDelete('cascade');
+        $table->foreign('bahan_master_id')->references('id')->on('bahan_master')->onDelete('cascade');
+        $table->unique(['outlet_id', 'bahan_master_id']); // 1 bahan hanya 1 record per outlet
+    });
 
-        // Pesanan pelanggan
-        Schema::create('pesanan', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('outlet_id');
-            $table->string('meja_id');
-            $table->string('nama_pelanggan');
-            $table->string('no_telp');
-            $table->decimal('total_harga', 15, 2)->default(0);
-            $table->string('status')->default('pending'); // pending, confirmed, paid, cancelled
-            $table->timestamp('created_at')->useCurrent();
-            $table->timestamp('updated_at')->useCurrentOnUpdate()->nullable();
+    // menu_bahan — bahan baku yang dipakai tiap menu
+    Schema::create('menu_bahan', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('menu_id');
+        $table->string('bahan_master_id');
+        $table->decimal('jumlah_pakai', 12, 2)->default(0);
+        $table->timestamps();
 
-            $table->foreign('outlet_id')->references('id')->on('outlet')->cascadeOnDelete();
-            $table->foreign('meja_id')->references('id')->on('meja')->cascadeOnDelete();
-        });
+        $table->foreign('menu_id')->references('id')->on('menu')->onDelete('cascade');
+        $table->foreign('bahan_master_id')->references('id')->on('bahan_master')->onDelete('cascade');
+        $table->unique(['menu_id', 'bahan_master_id']);
+    });
 
-        // Detail item dalam pesanan
-        Schema::create('pesanan_detil', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('pesanan_id');
-            $table->string('menu_id');
-            $table->integer('qty');
-            $table->decimal('harga', 15, 2);
+    // menu_outlet — harga per outlet (bisa override dari harga_default)
+    Schema::create('menu_outlet', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('menu_id');
+        $table->string('outlet_id');
+        $table->decimal('harga', 12, 2)->default(0);
+        $table->boolean('is_available')->default(true);
+        $table->timestamps();
 
-            $table->foreign('pesanan_id')->references('id')->on('pesanan')->cascadeOnDelete();
-            $table->foreign('menu_id')->references('id')->on('menu')->cascadeOnDelete();
-        });
+        $table->foreign('menu_id')->references('id')->on('menu')->onDelete('cascade');
+        $table->foreign('outlet_id')->references('id')->on('outlet')->onDelete('cascade');
+        $table->unique(['menu_id', 'outlet_id']);
+    });
 
-        // Add-on per item pesanan
-        Schema::create('pesanan_addon', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('pesanan_detil_id');
-            $table->string('addon_id');
-            $table->integer('qty')->default(1);
+    // addon — tambahan menu (extra topping, dll)
+    Schema::create('addon', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('usaha_id');
+        $table->string('nama');
+        $table->decimal('harga', 12, 2)->default(0);
+        $table->timestamps();
 
-            $table->foreign('pesanan_detil_id')->references('id')->on('pesanan_detil')->cascadeOnDelete();
-            $table->foreign('addon_id')->references('id')->on('addon')->cascadeOnDelete();
-        });
+        $table->foreign('usaha_id')->references('id')->on('usaha')->onDelete('cascade');
+    });
 
-        // Pembayaran
-        Schema::create('pembayaran', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('pesanan_id')->unique();
-            $table->string('metode')->nullable(); // cash, transfer, dll
-            $table->decimal('jumlah_bayar', 15, 2);
-            $table->string('status')->default('pending'); // pending, paid
-            $table->timestamp('paid_at')->nullable();
-            $table->timestamps();
+    // meja — tiap outlet punya meja dengan QR code unik
+    Schema::create('meja', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('outlet_id');
+        $table->string('nomor_meja');
+        $table->string('qr_code')->nullable();
+        $table->timestamps();
 
-            $table->foreign('pesanan_id')->references('id')->on('pesanan')->cascadeOnDelete();
-        });
+        $table->foreign('outlet_id')->references('id')->on('outlet')->onDelete('cascade');
+    });
 
-        // Pengeluaran per outlet (pembelian bahan baku)
-        Schema::create('pengeluaran', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('outlet_id');
-            $table->decimal('total', 15, 2);
-            $table->date('tanggal');
-            $table->string('keterangan')->nullable();
-            $table->timestamps();
+    // pesanan
+    Schema::create('pesanan', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('outlet_id');
+        $table->string('meja_id')->nullable();
+        $table->string('nama_pelanggan');
+        $table->string('no_telp')->nullable();
+        $table->decimal('total_harga', 12, 2)->default(0);
+        $table->enum('status', ['pending', 'confirmed', 'paid', 'cancelled'])->default('pending');
+        $table->timestamps();
 
-            $table->foreign('outlet_id')->references('id')->on('outlet')->cascadeOnDelete();
-        });
+        $table->foreign('outlet_id')->references('id')->on('outlet')->onDelete('cascade');
+        $table->foreign('meja_id')->references('id')->on('meja')->onDelete('set null');
+    });
 
-        // Kerugian per outlet
-        Schema::create('kerugian', function (Blueprint $table) {
-            $table->string('id')->primary();
-            $table->string('outlet_id');
-            $table->decimal('total_rugi', 15, 2);
-            $table->date('tanggal');
-            $table->timestamps();
+    // pesanan_detail — item per pesanan
+    Schema::create('pesanan_detail', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('pesanan_id');
+        $table->string('menu_id');
+        $table->integer('qty')->default(1);
+        $table->decimal('harga', 12, 2)->default(0);
+        $table->timestamps();
 
-            $table->foreign('outlet_id')->references('id')->on('outlet')->cascadeOnDelete();
-        });
-    }
+        $table->foreign('pesanan_id')->references('id')->on('pesanan')->onDelete('cascade');
+        $table->foreign('menu_id')->references('id')->on('menu')->onDelete('restrict');
+    });
 
-    public function down(): void
-    {
-        Schema::dropIfExists('kerugian');
-        Schema::dropIfExists('pengeluaran');
-        Schema::dropIfExists('pembayaran');
-        Schema::dropIfExists('pesanan_addon');
-        Schema::dropIfExists('pesanan_detil');
-        Schema::dropIfExists('pesanan');
-        Schema::dropIfExists('bahan_outlet');
-        Schema::dropIfExists('meja');
-    }
+    // pesanan_addon
+    Schema::create('pesanan_addon', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('pesanan_detail_id');
+        $table->string('addon_id');
+        $table->integer('qty')->default(1);
+        $table->timestamps();
+
+        $table->foreign('pesanan_detail_id')->references('id')->on('pesanan_detail')->onDelete('cascade');
+        $table->foreign('addon_id')->references('id')->on('addon')->onDelete('cascade');
+    });
+
+    // pembayaran
+    Schema::create('pembayaran', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('pesanan_id')->unique();
+        $table->string('metode')->nullable();
+        $table->decimal('jumlah_bayar', 12, 2)->default(0);
+        $table->enum('status', ['pending', 'paid'])->default('pending');
+        $table->timestamp('psid_at')->nullable(); // paid_at
+        $table->timestamps();
+
+        $table->foreign('pesanan_id')->references('id')->on('pesanan')->onDelete('cascade');
+    });
+
+    // kerugian — kerugian per outlet
+    Schema::create('kerugian', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('outlet_id');
+        $table->decimal('total_rugi', 12, 2)->default(0);
+        $table->date('tanggal');
+        $table->timestamps();
+
+        $table->foreign('outlet_id')->references('id')->on('outlet')->onDelete('cascade');
+    });
+
+    // pengeluaran — pengeluaran bahan baku per outlet
+    Schema::create('pengeluaran', function (Blueprint $table) {
+        $table->string('id')->primary();
+        $table->string('outlet_id');
+        $table->decimal('total', 12, 2)->default(0);
+        $table->date('tanggal');
+        $table->timestamps();
+
+        $table->foreign('outlet_id')->references('id')->on('outlet')->onDelete('cascade');
+    });
+}
+
+public function down(): void
+{
+    Schema::dropIfExists('pengeluaran');
+    Schema::dropIfExists('kerugian');
+    Schema::dropIfExists('pembayaran');
+    Schema::dropIfExists('pesanan_addon');
+    Schema::dropIfExists('pesanan_detail');
+    Schema::dropIfExists('pesanan');
+    Schema::dropIfExists('meja');
+    Schema::dropIfExists('addon');
+    Schema::dropIfExists('menu_outlet');
+    Schema::dropIfExists('menu_bahan');
+    Schema::dropIfExists('bahan_outlet');
+    Schema::dropIfExists('bahan_master');
+}
 };

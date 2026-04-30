@@ -1,66 +1,25 @@
 <?php
-
 namespace App\Models;
-
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Support\Str;
+use Tymon\JWTAuth\Contracts\JWTSubject;
 
-class User extends Authenticatable
+class User extends Authenticatable implements JWTSubject
 {
     protected $table = 'users';
-    public $incrementing = false;
     protected $keyType = 'string';
+    public $incrementing = false;
 
     protected $fillable = [
         'id', 'role_id', 'usaha_id', 'outlet_id',
-        'username', 'email', 'password',
+        'username', 'nama_lengkap', 'email', 'password', 'is_active',
     ];
-
     protected $hidden = ['password'];
+    protected $casts  = ['is_active' => 'boolean'];
 
-    protected static function boot()
-    {
-        parent::boot();
-        static::creating(fn($m) => $m->id = $m->id ?: Str::uuid());
-    }
+    public function getJWTIdentifier() { return $this->getKey(); }
+    public function getJWTCustomClaims() { return []; }
 
-    public function role()
-    {
-        return $this->belongsTo(Role::class, 'role_id');
-    }
-
-    public function usaha()
-    {
-        return $this->belongsTo(Usaha::class, 'usaha_id');
-    }
-
-    public function outlet()
-    {
-        return $this->belongsTo(Outlet::class, 'outlet_id');
-    }
-
-    public function isSuperAdmin(): bool
-    {
-        return $this->role_id === 'superadmin';
-    }
-
-    public function isOwner(): bool
-    {
-        return $this->role_id === 'owner';
-    }
-
-    public function isOutlet(): bool
-    {
-        return $this->role_id === 'outlet';
-    }
-
-    public function activityLogs()
-    {
-        return $this->hasMany(ActivityLog::class, 'user_id');
-    }
-
-    public function notifications()
-    {
-        return $this->hasMany(Notification::class, 'user_id');
-    }
+    public function role()   { return $this->belongsTo(Role::class, 'role_id'); }
+    public function usaha()  { return $this->belongsTo(Usaha::class, 'usaha_id'); }
+    public function outlet() { return $this->belongsTo(Outlet::class, 'outlet_id'); }
 }
