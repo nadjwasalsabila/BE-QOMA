@@ -6,10 +6,6 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-|
-| Semua routes dipisah per role untuk kemudahan maintenance.
-| Tambahkan prefix sesuai role masing-masing.
-|
 */
 
 // Auth (public + protected)
