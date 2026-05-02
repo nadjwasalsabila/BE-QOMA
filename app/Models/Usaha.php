@@ -9,7 +9,7 @@ class Usaha extends Model
     public $incrementing = false;
 
     protected $fillable = [
-        'id', 'nama_usaha', 'email', 'owner_id',
+        'id', 'nama_usaha', 'email', 'alamat', 'owner_id', // ← tambah alamat
         'status', 'catatan_admin', 'approved_at', 'rejected_at',
     ];
     protected $casts = [

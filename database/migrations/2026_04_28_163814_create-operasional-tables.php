@@ -153,11 +153,14 @@ return new class extends Migration
     Schema::create('pengeluaran', function (Blueprint $table) {
         $table->string('id')->primary();
         $table->string('outlet_id');
+        $table->string('bahan_master_id')->nullable();
+        $table->string('sumber')->nullable(); // keterangan pembelian bahan baku
         $table->decimal('total', 12, 2)->default(0);
         $table->date('tanggal');
         $table->timestamps();
 
         $table->foreign('outlet_id')->references('id')->on('outlet')->onDelete('cascade');
+        $table->foreign('bahan_master_id')->references('id')->on('bahan_master')->onDelete('set null');
     });
 }
 

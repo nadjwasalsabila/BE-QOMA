@@ -1,0 +1,64 @@
+<?php
+
+namespace App\Http\Controllers\Api\Auth;
+
+use App\Http\Controllers\Controller;
+use App\Models\Plan;
+use App\Services\Auth\RegisterService;
+use Illuminate\Http\Request;
+
+class RegisterController extends Controller
+{
+    public function __construct(private RegisterService $service) {}
+
+    // GET /auth/plans — tampilkan daftar plan untuk landing page
+    public function plans()
+    {
+        $plans = Plan::select('id', 'nama_plan', 'harga', 'batas_outlet', 'deskripsi')
+                     ->get()
+                     ->map(fn($plan) => [
+                         'id'           => $plan->id,
+                         'nama_plan'    => $plan->nama_plan,
+                         'harga'        => $plan->harga,
+                         'batas_outlet' => $plan->batas_outlet === -1 ? 'Unlimited' : $plan->batas_outlet,
+                         'deskripsi'    => $plan->deskripsi,
+                         'is_free'      => $plan->harga == 0,
+                     ]);
+
+        return response()->json([
+            'message' => 'Daftar plan tersedia',
+            'data'    => $plans,
+        ]);
+    }
+
+    // POST /auth/register
+    public function register(Request $request)
+    {
+        $request->validate([
+            'nama_usaha'            => 'required|string|max:100',
+            'alamat'                => 'nullable|string|max:255',
+            'email'                 => 'required|email|unique:users,email',
+            'nama_owner'            => 'required|string|max:100',
+            'username'              => 'required|string|min:4|unique:users,username',
+            'password'              => 'required|string|min:6|confirmed',
+            'plan_id'               => 'required|exists:plans,id',
+            'metode_pembayaran'     => 'nullable|in:transfer,qris',
+        ]);
+
+        // Kalau plan berbayar, metode pembayaran wajib diisi
+        $plan = Plan::findOrFail($request->plan_id);
+        if ($plan->harga > 0) {
+            $request->validate([
+                'metode_pembayaran' => 'required|in:transfer,qris',
+            ]);
+        }
+
+        try {
+            $result = $this->service->register($request->all());
+
+            return response()->json($result, 201);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+}
