@@ -3,117 +3,252 @@
 namespace App\Http\Controllers\Api\Owner;
 
 use App\Http\Controllers\Controller;
-use App\Models\Menu;
-use App\Models\Usaha;
-use App\Services\MenuService;
+use App\Models\{BahanMaster, KategoriMenu, Menu, MenuOutlet, Outlet};
+use App\Services\ActivityLogService;
+use App\Traits\{HasPagination, OwnerAccess};
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\{DB, Storage};
+use Illuminate\Support\Str;
 
 class MenuController extends Controller
 {
-    public function __construct(private MenuService $service) {}
+    use HasPagination, OwnerAccess;
 
-    // GET /owner/usaha/{usaha_id}/menu?kategori_id=xxx&is_active=1
-    public function index(Request $request, string $usahaId)
+    // GET /owner/menu?kategori_id=xxx&is_active=1&page=1
+    public function index(Request $request)
     {
-        $this->authorizeUsaha($usahaId);
+        $usahaId = $this->getUsahaId();
 
-        $menus = $this->service->getByUsaha($usahaId, $request->only(['kategori_id', 'is_active']));
+        $query = Menu::where('usaha_id', $usahaId)
+                     ->with(['kategori:id,nama', 'bahanMasters:id,nama,satuan'])
+                     ->withCount('menuOutlets');
 
-        return response()->json([
-            'message' => 'Daftar menu',
-            'data'    => $menus,
-        ]);
+        if ($request->kategori_id) {
+            $query->where('kategori_id', $request->kategori_id);
+        }
+
+        if ($request->filled('is_active')) {
+            $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        if ($request->search) {
+            $query->where('nama', 'like', "%{$request->search}%");
+        }
+
+        $menus = $query->orderBy('nama')->paginate($this->getPerPage($request));
+
+        return response()->json($this->paginateResponse($menus, 'Daftar menu'));
     }
 
-    // POST /owner/usaha/{usaha_id}/menu  (multipart/form-data)
-    public function store(Request $request, string $usahaId)
+    // POST /owner/menu  (multipart/form-data)
+    public function store(Request $request)
     {
-        $this->authorizeUsaha($usahaId);
+        $usahaId = $this->getUsahaId();
 
         $request->validate([
-            'kategori_id'         => 'required|exists:kategori_menu,id',
-            'nama'                => 'required|string|max:150',
-            'harga_default'       => 'required|numeric|min:0',
-            'keterangan'          => 'nullable|string',
-            'is_active'           => 'nullable|boolean',
-            'gambar'              => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048', // max 2MB
-            // bahan_baku dikirim sebagai array JSON
-            // contoh: bahan_baku[0][bahan_baku_id]=xxx&bahan_baku[0][jumlah_pakai]=200
-            'bahan_baku'          => 'nullable|array',
-            'bahan_baku.*.bahan_baku_id' => 'required|exists:bahan_baku,id',
-            'bahan_baku.*.jumlah_pakai'  => 'required|numeric|min:0',
-        ]);
-
-        $menu = $this->service->create(
-            $request->except('gambar'),
-            $usahaId,
-            $request->file('gambar')
-        );
-
-        return response()->json([
-            'message' => 'Menu berhasil dibuat dan sudah tersebar ke semua cabang',
-            'data'    => $menu,
-        ], 201);
-    }
-
-    // GET /owner/usaha/{usaha_id}/menu/{id}
-    public function show(string $usahaId, string $id)
-    {
-        $this->authorizeUsaha($usahaId);
-        $menu = $this->findOwned($usahaId, $id);
-
-        return response()->json([
-            'message' => 'Detail menu',
-            'data'    => $menu->load(['kategori', 'bahanBakus', 'menuTenants.tenant']),
-        ]);
-    }
-
-    // POST /owner/usaha/{usaha_id}/menu/{id}?_method=PUT  (karena multipart tidak support PUT)
-    public function update(Request $request, string $usahaId, string $id)
-    {
-        $this->authorizeUsaha($usahaId);
-
-        $request->validate([
-            'kategori_id'                => 'sometimes|exists:kategori_menu,id',
-            'nama'                       => 'sometimes|string|max:150',
-            'harga_default'              => 'sometimes|numeric|min:0',
-            'keterangan'                 => 'nullable|string',
+            'nama'                       => 'required|string|max:150',
+            'kategori_id'                => 'required|exists:kategori_menu,id',
+            'harga_default'              => 'required|numeric|min:1',
+            'keterangan'                 => 'nullable|string|max:500',
             'is_active'                  => 'nullable|boolean',
             'gambar'                     => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
             'bahan_baku'                 => 'nullable|array',
-            'bahan_baku.*.bahan_baku_id' => 'required|exists:bahan_baku,id',
-            'bahan_baku.*.jumlah_pakai'  => 'required|numeric|min:0',
+            'bahan_baku.*.bahan_master_id' => 'required|exists:bahan_master,id',
+            'bahan_baku.*.jumlah_pakai'    => 'required|numeric|min:0.01',
         ]);
 
-        $menu = $this->findOwned($usahaId, $id);
-        $menu = $this->service->update($menu, $request->except('gambar'), $request->file('gambar'));
+        // Validasi kategori milik usaha ini
+        $kategoriValid = KategoriMenu::where('id', $request->kategori_id)
+                                     ->where('usaha_id', $usahaId)
+                                     ->exists();
+
+        if (!$kategoriValid) {
+            return response()->json([
+                'message' => 'Kategori tidak ditemukan atau bukan milik usaha Anda.',
+            ], 422);
+        }
+
+        // Validasi bahan baku milik usaha ini
+        if ($request->bahan_baku) {
+            $bahanIds       = collect($request->bahan_baku)->pluck('bahan_master_id');
+            $validBahanCount = BahanMaster::whereIn('id', $bahanIds)
+                                          ->where('usaha_id', $usahaId)
+                                          ->count();
+
+            if ($validBahanCount !== $bahanIds->count()) {
+                return response()->json([
+                    'message' => 'Satu atau lebih bahan baku tidak valid atau bukan milik usaha Anda.',
+                ], 422);
+            }
+        }
+
+        return DB::transaction(function () use ($request, $usahaId) {
+
+            // Upload gambar
+            $gambarPath = null;
+            if ($request->hasFile('gambar')) {
+                $gambarPath = $request->file('gambar')->storeAs(
+                    "menu/{$usahaId}",
+                    Str::uuid() . '.' . $request->file('gambar')->getClientOriginalExtension(),
+                    'public'
+                );
+            }
+
+            // Buat menu
+            $menu = Menu::create([
+                'id'            => Str::uuid(),
+                'usaha_id'      => $usahaId,
+                'kategori_id'   => $request->kategori_id,
+                'nama'          => $request->nama,
+                'harga_default' => $request->harga_default,
+                'gambar'        => $gambarPath,
+                'keterangan'    => $request->keterangan,
+                'is_active'     => $request->is_active ?? true,
+            ]);
+
+            // Sync bahan baku
+            if ($request->bahan_baku) {
+                foreach ($request->bahan_baku as $item) {
+                    DB::table('menu_bahan')->insert([
+                        'id'              => Str::uuid(),
+                        'menu_id'         => $menu->id,
+                        'bahan_master_id' => $item['bahan_master_id'],
+                        'jumlah_pakai'    => $item['jumlah_pakai'],
+                        'created_at'      => now(),
+                        'updated_at'      => now(),
+                    ]);
+                }
+            }
+
+            // Auto sync ke semua outlet usaha ini
+            Outlet::where('usaha_id', $usahaId)->each(function ($outlet) use ($menu) {
+                MenuOutlet::firstOrCreate(
+                    ['menu_id' => $menu->id, 'outlet_id' => $outlet->id],
+                    ['id' => Str::uuid(), 'harga' => $menu->harga_default, 'is_available' => true]
+                );
+            });
+
+            ActivityLogService::log(
+                'create_menu',
+                "Menu '{$menu->nama}' (Rp " . number_format($menu->harga_default) . ") dibuat",
+                ['menu_id' => $menu->id, 'nama' => $menu->nama],
+                $usahaId,
+            );
+
+            return response()->json([
+                'message' => 'Menu berhasil dibuat dan sudah tersebar ke semua outlet',
+                'data'    => $menu->load(['kategori', 'bahanMasters', 'menuOutlets.outlet']),
+            ], 201);
+        });
+    }
+
+    // GET /owner/menu/{id}
+    public function show(string $id)
+    {
+        $menu = $this->validateMilikUsaha(Menu::class, $id);
 
         return response()->json([
-            'message' => 'Menu berhasil diupdate',
-            'data'    => $menu,
+            'message' => 'Detail menu',
+            'data'    => $menu->load(['kategori', 'bahanMasters', 'menuOutlets.outlet']),
         ]);
     }
 
-    // DELETE /owner/usaha/{usaha_id}/menu/{id}
-    public function destroy(string $usahaId, string $id)
+    // POST /owner/menu/{id}  (pakai POST + _method=PUT untuk multipart)
+    public function update(Request $request, string $id)
     {
-        $this->authorizeUsaha($usahaId);
-        $menu = $this->findOwned($usahaId, $id);
-        $this->service->delete($menu);
+        $usahaId = $this->getUsahaId();
+        $menu    = $this->validateMilikUsaha(Menu::class, $id);
+
+        $request->validate([
+            'nama'                         => 'sometimes|string|max:150',
+            'kategori_id'                  => 'sometimes|exists:kategori_menu,id',
+            'harga_default'                => 'sometimes|numeric|min:1',
+            'keterangan'                   => 'nullable|string|max:500',
+            'is_active'                    => 'nullable|boolean',
+            'gambar'                       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'bahan_baku'                   => 'nullable|array',
+            'bahan_baku.*.bahan_master_id' => 'required|exists:bahan_master,id',
+            'bahan_baku.*.jumlah_pakai'    => 'required|numeric|min:0.01',
+        ]);
+
+        return DB::transaction(function () use ($request, $menu, $usahaId) {
+
+            $oldHarga = $menu->harga_default;
+
+            // Ganti gambar jika ada
+            if ($request->hasFile('gambar')) {
+                if ($menu->gambar) Storage::disk('public')->delete($menu->gambar);
+
+                $data['gambar'] = $request->file('gambar')->storeAs(
+                    "menu/{$usahaId}",
+                    Str::uuid() . '.' . $request->file('gambar')->getClientOriginalExtension(),
+                    'public'
+                );
+            }
+
+            $menu->update([
+                'kategori_id'   => $request->kategori_id   ?? $menu->kategori_id,
+                'nama'          => $request->nama           ?? $menu->nama,
+                'harga_default' => $request->harga_default  ?? $menu->harga_default,
+                'gambar'        => $data['gambar']          ?? $menu->gambar,
+                'keterangan'    => $request->keterangan     ?? $menu->keterangan,
+                'is_active'     => $request->is_active      ?? $menu->is_active,
+            ]);
+
+            // Sync bahan baku jika dikirim
+            if ($request->has('bahan_baku')) {
+                DB::table('menu_bahan')->where('menu_id', $menu->id)->delete();
+
+                foreach ($request->bahan_baku as $item) {
+                    DB::table('menu_bahan')->insert([
+                        'id'              => Str::uuid(),
+                        'menu_id'         => $menu->id,
+                        'bahan_master_id' => $item['bahan_master_id'],
+                        'jumlah_pakai'    => $item['jumlah_pakai'],
+                        'created_at'      => now(),
+                        'updated_at'      => now(),
+                    ]);
+                }
+            }
+
+            // Jika harga berubah, update menu_outlet yang belum di-override
+            $newHarga = $menu->fresh()->harga_default;
+            if ((float) $oldHarga !== (float) $newHarga) {
+                MenuOutlet::where('menu_id', $menu->id)
+                          ->where('harga', $oldHarga)
+                          ->update(['harga' => $newHarga]);
+            }
+
+            ActivityLogService::log(
+                'update_menu',
+                "Menu '{$menu->nama}' diupdate",
+                ['menu_id' => $menu->id],
+                $usahaId,
+            );
+
+            return response()->json([
+                'message' => 'Menu berhasil diupdate',
+                'data'    => $menu->fresh(['kategori', 'bahanMasters', 'menuOutlets.outlet']),
+            ]);
+        });
+    }
+
+    // DELETE /owner/menu/{id}
+    public function destroy(string $id)
+    {
+        $usahaId = $this->getUsahaId();
+        $menu    = $this->validateMilikUsaha(Menu::class, $id);
+
+        if ($menu->gambar) Storage::disk('public')->delete($menu->gambar);
+        $menu->delete();
+
+        ActivityLogService::log(
+            'delete_menu',
+            "Menu '{$menu->nama}' dihapus",
+            ['menu_id' => $menu->id],
+            $usahaId,
+        );
 
         return response()->json(['message' => 'Menu berhasil dihapus']);
-    }
-
-    private function authorizeUsaha(string $usahaId): void
-    {
-        $ok = Usaha::where('id', $usahaId)->where('owner_id', auth()->id())->exists();
-        if (!$ok) abort(403, 'Usaha bukan milik Anda');
-    }
-
-    private function findOwned(string $usahaId, string $id): Menu
-    {
-        $menu = Menu::where('id', $id)->where('usaha_id', $usahaId)->first();
-        if (!$menu) abort(404, 'Menu tidak ditemukan');
-        return $menu;
     }
 }

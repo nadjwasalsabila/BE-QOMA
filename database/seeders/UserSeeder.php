@@ -223,19 +223,119 @@ class UserSeeder extends Seeder
         DB::table('users')->where('username', 'owner_pending')
                           ->update(['usaha_id' => $usahaPending->id]);
 
+        
+        // ============================================================
+        // 10. OWNER KEDUA (untuk test data isolation)
+        // ============================================================
+        $owner2Id = Str::uuid()->toString();
+        DB::table('users')->updateOrInsert(
+            ['username' => 'owner2'],
+            [
+                'id'           => $owner2Id,
+                'role_id'      => 'role_owner',
+                'usaha_id'     => null,
+                'outlet_id'    => null,
+                'username'     => 'owner2',
+                'nama_lengkap' => 'Siti Rahayu',
+                'password'     => Hash::make('password123'),
+                'is_active'    => 1,
+                'email'       => 'restositi@demo.com',
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ]
+        );
+
+        $owner2 = DB::table('users')->where('username', 'owner2')->first();
+
+        // Usaha owner2
+        $usaha2Id = Str::uuid()->toString();
+        DB::table('usaha')->updateOrInsert(
+            ['nama_usaha' => 'Resto Siti Jaya'],
+            [
+                'id'          => $usaha2Id,
+                'nama_usaha'  => 'Resto Siti Jaya',
+                'owner_id'    => $owner2->id,
+                'email'       => 'restositijaya@demo.com',
+                'alamat'      => 'Jl. Gajahmada No. 10, Semarang',
+                'status'      => 'active',
+                'approved_at' => now(),
+                'created_at'  => now(),
+                'updated_at'  => now(),
+            ]
+        );
+
+        $usaha2 = DB::table('usaha')->where('nama_usaha', 'Resto Siti Jaya')->first();
+
+        // Update owner2 dengan usaha_id
+        DB::table('users')->where('username', 'owner2')
+                        ->update(['usaha_id' => $usaha2->id]);
+
+        // Subscription owner2 (free trial)
+        DB::table('subscriptions')->updateOrInsert(
+            ['usaha_id' => $usaha2->id],
+            [
+                'id'         => Str::uuid()->toString(),
+                'usaha_id'   => $usaha2->id,
+                'plan_id'    => 'plan_free_trial',
+                'start_date' => now()->toDateString(),
+                'end_date'   => now()->addDays(14)->toDateString(),
+                'status'     => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+
+        // Outlet milik owner2
+        $outlet3Id = Str::uuid()->toString();
+        DB::table('outlet')->updateOrInsert(
+            ['nama_outlet' => 'Resto Siti Jaya Pusat'],
+            [
+                'id'          => $outlet3Id,
+                'usaha_id'    => $usaha2->id,
+                'nama_outlet' => 'Resto Siti Jaya Pusat',
+                'alamat'      => 'Jl. Gajahmada No. 10, Semarang',
+                'status_buka' => 1,
+                'email'       => 'restositi@demo.com',
+                'created_at'  => now(),
+                'updated_at'  => now(),
+            ]
+        );
+
+        $outlet3 = DB::table('outlet')->where('nama_outlet', 'Resto Siti Jaya Pusat')->first();
+
+        // User outlet milik owner2
+        DB::table('users')->updateOrInsert(
+            ['username' => 'outlet_siti'],
+            [
+                'id'           => Str::uuid()->toString(),
+                'role_id'      => 'role_outlet',
+                'usaha_id'     => $usaha2->id,
+                'outlet_id'    => $outlet3->id,
+                'username'     => 'outlet_siti',
+                'nama_lengkap' => 'Kasir Siti',
+                'email'        => 'outletsiti@demo.com',
+                'password'     => Hash::make('password123'),
+                'is_active'    => 1,
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ]
+        );
+
         // ============================================================
         // SUMMARY
         // ============================================================
         $this->command->info('');
         $this->command->info('✅ UserSeeder selesai!');
         $this->command->table(
-            ['Role', 'Username', 'Password', 'Status'],
+            ['Role', 'Username', 'Password', 'Usaha', 'Plan'],
             [
-                ['super_admin', 'superadmin',    'password123', 'active'],
-                ['owner',       'owner1',         'password123', 'active'],
-                ['outlet',      'outlet_pusat',   'password123', 'active'],
-                ['outlet',      'outlet_cabang',  'password123', 'active'],
-                ['owner',       'owner_pending',  'password123', 'inactive'],
+                ['super_admin', 'superadmin',   'password123', '-',               '-'],
+                ['owner',       'owner1',        'password123', 'Warung Barokah',  'Pro'],
+                ['owner',       'owner2',        'password123', 'Resto Siti Jaya', 'Free Trial'],
+                ['outlet',      'outlet_pusat',  'password123', 'Warung Barokah',  '-'],
+                ['outlet',      'outlet_cabang', 'password123', 'Warung Barokah',  '-'],
+                ['outlet',      'outlet_siti',   'password123', 'Resto Siti Jaya', '-'],
+                ['owner',       'owner_pending', 'password123', 'Kedai Baru',      'pending'],
             ]
         );
     }

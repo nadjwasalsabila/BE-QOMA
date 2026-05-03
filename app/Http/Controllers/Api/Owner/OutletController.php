@@ -26,7 +26,7 @@ class OutletController extends Controller
         $request->validate([
             'nama_outlet'  => 'required|string|max:100',
             'alamat'       => 'nullable|string',
-            'email_outlet' => 'nullable|email',
+            'email' => 'nullable|email',
         ]);
 
         try {
@@ -73,5 +73,22 @@ class OutletController extends Controller
     {
         $this->gate($usahaId);
         return Outlet::where('id', $id)->where('usaha_id', $usahaId)->firstOrFail();
+    }
+
+    // GET /owner/outlet — list semua outlet milik owner yang login
+    public function myOutlets(Request $request)
+    {
+        $usahaId = auth()->user()->usaha_id;
+
+        if (!$usahaId) {
+            return response()->json(['message' => 'Owner belum memiliki usaha'], 404);
+        }
+
+        $outlets = Outlet::where('usaha_id', $usahaId)
+                        ->withCount('mejas')
+                        ->with(['users' => fn($q) => $q->select('id', 'outlet_id', 'username', 'is_active')])
+                        ->paginate($this->getPerPage($request));
+
+        return response()->json($this->paginateResponse($outlets, 'Daftar outlet saya'));
     }
 }

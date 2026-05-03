@@ -4,84 +4,85 @@ namespace App\Http\Controllers\Api\Owner;
 
 use App\Http\Controllers\Controller;
 use App\Models\KategoriMenu;
-use App\Services\KategoriMenuService;
+use App\Services\ActivityLogService;
+use App\Traits\{HasPagination, OwnerAccess};
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class KategoriMenuController extends Controller
 {
-    public function __construct(private KategoriMenuService $service) {}
+    use HasPagination, OwnerAccess;
 
-    // GET /owner/usaha/{usaha_id}/kategori
-    public function index(string $usahaId)
+    public function index(Request $request)
     {
-        $this->authorizeUsaha($usahaId);
+        $usahaId = $this->getUsahaId();
 
-        return response()->json([
-            'message' => 'Daftar kategori',
-            'data'    => $this->service->getByUsaha($usahaId),
-        ]);
+        $kategori = KategoriMenu::where('usaha_id', $usahaId)
+                                ->withCount('menus')
+                                ->orderBy('nama')
+                                ->paginate($this->getPerPage($request));
+
+        return response()->json($this->paginateResponse($kategori, 'Daftar kategori'));
     }
 
-    // POST /owner/usaha/{usaha_id}/kategori
-    public function store(Request $request, string $usahaId)
+    public function store(Request $request)
     {
-        $this->authorizeUsaha($usahaId);
-
-        $request->validate([
-            'nama' => 'required|string|max:100',
-        ]);
-
-        $kategori = $this->service->create($request->all(), $usahaId);
-
-        return response()->json([
-            'message' => 'Kategori berhasil dibuat',
-            'data'    => $kategori,
-        ], 201);
-    }
-
-    // PUT /owner/usaha/{usaha_id}/kategori/{id}
-    public function update(Request $request, string $usahaId, string $id)
-    {
-        $this->authorizeUsaha($usahaId);
+        $usahaId = $this->getUsahaId();
 
         $request->validate(['nama' => 'required|string|max:100']);
 
-        $kategori = $this->findOwned($usahaId, $id);
-        $kategori = $this->service->update($kategori, $request->all());
+        // Cek duplikat
+        if (KategoriMenu::where('usaha_id', $usahaId)->where('nama', $request->nama)->exists()) {
+            return response()->json(['message' => "Kategori '{$request->nama}' sudah ada."], 422);
+        }
 
+        $kategori = KategoriMenu::create([
+            'id'       => Str::uuid(),
+            'usaha_id' => $usahaId,
+            'nama'     => $request->nama,
+        ]);
+
+        ActivityLogService::log('create_kategori', "Kategori '{$request->nama}' dibuat", [], $usahaId);
+
+        return response()->json(['message' => 'Kategori dibuat', 'data' => $kategori], 201);
+    }
+
+    public function show(string $id)
+    {
         return response()->json([
-            'message' => 'Kategori berhasil diupdate',
-            'data'    => $kategori,
+            'message' => 'Detail kategori',
+            'data'    => $this->validateMilikUsaha(KategoriMenu::class, $id),
         ]);
     }
 
-    // DELETE /owner/usaha/{usaha_id}/kategori/{id}
-    public function destroy(string $usahaId, string $id)
+    public function update(Request $request, string $id)
     {
-        $this->authorizeUsaha($usahaId);
+        $usahaId  = $this->getUsahaId();
+        $kategori = $this->validateMilikUsaha(KategoriMenu::class, $id);
 
-        $kategori = $this->findOwned($usahaId, $id);
+        $request->validate(['nama' => 'required|string|max:100']);
+        $kategori->update(['nama' => $request->nama]);
 
-        try {
-            $this->service->delete($kategori);
-            return response()->json(['message' => 'Kategori berhasil dihapus']);
-        } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+        ActivityLogService::log('update_kategori', "Kategori '{$request->nama}' diupdate", [], $usahaId);
+
+        return response()->json(['message' => 'Kategori diupdate', 'data' => $kategori->fresh()]);
+    }
+
+    public function destroy(string $id)
+    {
+        $usahaId  = $this->getUsahaId();
+        $kategori = $this->validateMilikUsaha(KategoriMenu::class, $id);
+
+        if ($kategori->menus()->exists()) {
+            return response()->json([
+                'message' => "Kategori '{$kategori->nama}' tidak bisa dihapus karena masih dipakai menu.",
+                'code'    => 'IN_USE',
+            ], 422);
         }
-    }
 
-    private function authorizeUsaha(string $usahaId): void
-    {
-        $ok = \App\Models\Usaha::where('id', $usahaId)
-                               ->where('owner_id', auth()->id())
-                               ->exists();
-        if (!$ok) abort(403, 'Usaha bukan milik Anda');
-    }
+        $kategori->delete();
+        ActivityLogService::log('delete_kategori', "Kategori '{$kategori->nama}' dihapus", [], $usahaId);
 
-    private function findOwned(string $usahaId, string $id): KategoriMenu
-    {
-        $k = KategoriMenu::where('id', $id)->where('usaha_id', $usahaId)->first();
-        if (!$k) abort(404, 'Kategori tidak ditemukan');
-        return $k;
+        return response()->json(['message' => 'Kategori dihapus']);
     }
 }

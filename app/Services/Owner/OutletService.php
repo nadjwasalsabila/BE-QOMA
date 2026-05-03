@@ -53,6 +53,7 @@ class OutletService
                 'nama_outlet' => $data['nama_outlet'],
                 'alamat'      => $data['alamat'] ?? null,
                 'status_buka' => true,
+                'email'       => $data['email'] ?? null,
             ]);
 
             // Auto generate akun outlet
@@ -69,7 +70,7 @@ class OutletService
                 'outlet_id'    => $outlet->id,
                 'username'     => $username,
                 'password'     => Hash::make($plainPassword),
-                'email'        => $data['email_outlet'] ?? null,
+                'email'        => $data['email'] ?? null,
                 'is_active'    => true,
             ]);
 
@@ -100,6 +101,7 @@ class OutletService
         $outlet->update([
             'nama_outlet' => $data['nama_outlet'] ?? $outlet->nama_outlet,
             'alamat'      => $data['alamat']      ?? $outlet->alamat,
+            'email'       => $data['email']       ?? $outlet->email,
         ]);
 
         ActivityLogService::log(
